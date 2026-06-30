@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -26,113 +25,22 @@
             max-width: 500px;
             border: 1px solid rgba(255,255,255,0.1);
         }
-        h1 {
-            text-align: center;
-            margin-bottom: 10px;
-            font-size: 28px;
-        }
+        h1 { text-align: center; margin-bottom: 10px; font-size: 28px; }
         h1 span { color: #e94560; }
-        .subtitle {
-            text-align: center;
-            color: #aaa;
-            margin-bottom: 30px;
-            font-size: 14px;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 14px;
-            color: #ddd;
-        }
+        .subtitle { text-align: center; color: #aaa; margin-bottom: 30px; font-size: 14px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-size: 14px; color: #ddd; }
         input {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 12px;
-            background: rgba(255,255,255,0.1);
-            color: #fff;
-            font-size: 16px;
-            outline: none;
-            transition: all 0.3s;
+            width: 100%; padding: 14px; border: none; border-radius: 12px;
+            background: rgba(255,255,255,0.1); color: #fff; font-size: 16px; outline: none;
         }
-        input:focus {
-            background: rgba(255,255,255,0.15);
-            box-shadow: 0 0 0 2px #e94560;
-        }
-        input::placeholder { color: #666; }
-        .row {
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr;
-            gap: 10px;
-        }
+        input:focus { background: rgba(255,255,255,0.15); box-shadow: 0 0 0 2px #e94560; }
+        .row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
         button {
-            width: 100%;
-            padding: 16px;
-            border: none;
-            border-radius: 12px;
-            background: #e94560;
-            color: #fff;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 10px;
+            width: 100%; padding: 16px; border: none; border-radius: 12px;
+            background: #e94560; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer;
         }
-        button:hover {
-            background: #ff6b6b;
-            transform: translateY(-2px);
-        }
-        button:disabled {
-            background: #555;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .books-section {
-            margin-top: 30px;
-            display: none;
-        }
-        .book-card {
-            background: rgba(255,255,255,0.05);
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-        .book-info h3 {
-            font-size: 15px;
-            margin-bottom: 4px;
-        }
-        .book-info p {
-            font-size: 12px;
-            color: #888;
-        }
-        .btn-small {
-            padding: 8px 14px;
-            font-size: 12px;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-            background: #00d9ff;
-            color: #000;
-        }
-        .btn-auto {
-            background: #e94560;
-            margin-top: 20px;
-        }
-        .status {
-            text-align: center;
-            padding: 12px;
-            border-radius: 10px;
-            margin-top: 15px;
-            font-size: 14px;
-            display: none;
-        }
+        .status { text-align: center; padding: 12px; border-radius: 10px; margin-top: 15px; font-size: 14px; display: none; }
         .status.success { background: rgba(0,255,0,0.1); color: #00ff88; display: block; }
         .status.error { background: rgba(255,0,0,0.1); color: #ff4444; display: block; }
         .status.loading { background: rgba(255,165,0,0.1); color: #ffa500; display: block; }
@@ -141,12 +49,12 @@
 <body>
     <div class="container">
         <h1>🐘 <span>Elefante</span> Letrado</h1>
-        <p class="subtitle">Automatize sua leitura na plataforma SED</p>
+        <p class="subtitle">Automatize sua leitura</p>
 
         <div id="loginForm">
             <div class="row">
                 <div class="form-group">
-                    <label>RA (9 dígitos)</label>
+                    <label>RA</label>
                     <input type="text" id="ra" placeholder="000000000" maxlength="9">
                 </div>
                 <div class="form-group">
@@ -164,27 +72,10 @@
             </div>
             <button onclick="login()" id="btnLogin">Entrar</button>
         </div>
-
-        <div id="booksSection" class="books-section">
-            <h2 style="margin-bottom:15px;font-size:18px;">📚 Seus Livros</h2>
-            <div id="booksList"></div>
-            <button class="btn-auto" onclick="autoCompleteAll()" id="btnAuto">🚀 Concluir Todos</button>
-        </div>
-
         <div id="status" class="status"></div>
     </div>
 
     <script>
-        // 🔗 SEU TÚNEL SERVEO - MUDE AQUI SE O TÚNEL MUDAR
-        const API_URL = 'https://yung.serveousercontent.com';
-        
-        let token = localStorage.getItem('elefante_token');
-
-        if (token) {
-            document.getElementById('loginForm').style.display = 'none';
-            loadBooks();
-        }
-
         function showStatus(msg, type) {
             const el = document.getElementById('status');
             el.textContent = msg;
@@ -192,105 +83,31 @@
         }
 
         async function login() {
-            const btn = document.getElementById('btnLogin');
-            btn.disabled = true;
             showStatus('Autenticando...', 'loading');
-
+            
+            // Formatando o RA completo conforme a API espera
+            const raCompleto = document.getElementById('ra').value + document.getElementById('digito').value;
+            
             try {
-                const res = await fetch(`${API_URL}/api/login`, {
+                // Rota corrigida para apontar para o seu backend na Vercel[span_1](start_span)[span_1](end_span)
+                const res = await fetch('/api/backend', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        ra: document.getElementById('ra').value,
-                        digito: document.getElementById('digito').value,
-                        uf: document.getElementById('uf').value,
+                        user: raCompleto,
                         senha: document.getElementById('senha').value
                     })
                 });
+                
                 const data = await res.json();
                 
-                if (data.token || data.access_token || data.bearer) {
-                    token = data.token || data.access_token || data.bearer;
-                    localStorage.setItem('elefante_token', token);
-                    document.getElementById('loginForm').style.display = 'none';
-                    showStatus('Login realizado!', 'success');
-                    loadBooks();
+                if (res.ok) {
+                    showStatus('Login realizado com sucesso!', 'success');
                 } else {
-                    showStatus('Erro: ' + JSON.stringify(data), 'error');
+                    showStatus('Erro: ' + (data.error || 'Falha no login'), 'error');
                 }
             } catch (err) {
-                showStatus('Erro: ' + err.message, 'error');
-            } finally {
-                btn.disabled = false;
-            }
-        }
-
-        async function loadBooks() {
-            showStatus('Carregando livros...', 'loading');
-            try {
-                const res = await fetch(`${API_URL}/api/books`, {
-                    headers: { Authorization: 'Bearer ' + token }
-                });
-                const data = await res.json();
-                const books = data.books || data || [];
-                
-                const list = document.getElementById('booksList');
-                list.innerHTML = '';
-                
-                books.forEach(book => {
-                    const div = document.createElement('div');
-                    div.className = 'book-card';
-                    div.innerHTML = `
-                        <div class="book-info">
-                            <h3>${book.title || 'Sem título'}</h3>
-                            <p>${book.author || ''} ${book.completed ? '✅' : ''}</p>
-                        </div>
-                        <button class="btn-small" onclick="completeBook('${book.id || book._id || book.bookId}')">
-                            ${book.completed ? 'Refazer' : 'Concluir'}
-                        </button>
-                    `;
-                    list.appendChild(div);
-                });
-                
-                document.getElementById('booksSection').style.display = 'block';
-                showStatus(`${books.length} livros carregados`, 'success');
-            } catch (err) {
-                showStatus('Erro: ' + err.message, 'error');
-            }
-        }
-
-        async function completeBook(bookId) {
-            showStatus('Concluindo...', 'loading');
-            try {
-                const res = await fetch(`${API_URL}/api/books/${bookId}/complete`, {
-                    method: 'POST',
-                    headers: { Authorization: 'Bearer ' + token }
-                });
-                const data = await res.json();
-                showStatus(`Concluído! ${data.readingTimeMinutes} min`, 'success');
-                setTimeout(loadBooks, 1500);
-            } catch (err) {
-                showStatus('Erro: ' + err.message, 'error');
-            }
-        }
-
-        async function autoCompleteAll() {
-            const btn = document.getElementById('btnAuto');
-            btn.disabled = true;
-            showStatus('Automação em andamento...', 'loading');
-
-            try {
-                const res = await fetch(`${API_URL}/api/auto-complete-all`, {
-                    method: 'POST',
-                    headers: { Authorization: 'Bearer ' + token }
-                });
-                const data = await res.json();
-                showStatus(`✅ ${data.completed} concluídos! ${data.failed} falhas.`, 'success');
-                setTimeout(loadBooks, 2000);
-            } catch (err) {
-                showStatus('Erro: ' + err.message, 'error');
-            } finally {
-                btn.disabled = false;
+                showStatus('Erro de conexão: ' + err.message, 'error');
             }
         }
     </script>
