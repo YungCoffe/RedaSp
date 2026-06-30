@@ -9,58 +9,49 @@
         body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); min-height: 100vh; color: #fff; display: flex; justify-content: center; align-items: center; padding: 20px; }
         .container { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border-radius: 20px; padding: 40px; width: 100%; max-width: 500px; border: 1px solid rgba(255,255,255,0.1); }
         h1 { text-align: center; margin-bottom: 20px; font-size: 28px; }
+        input { width: 100%; padding: 14px; border-radius: 12px; border: none; background: rgba(255,255,255,0.1); color: #fff; margin-bottom: 10px; }
         button { width: 100%; padding: 16px; border-radius: 12px; border: none; background: #e94560; color: #fff; font-weight: 600; cursor: pointer; }
-        .books-section { margin-top: 30px; display: none; }
-        .book-card { background: rgba(255,255,255,0.05); padding: 15px; margin-bottom: 10px; border-radius: 10px; display: flex; justify-content: space-between; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🐘 Elefante Letrado</h1>
         <div id="loginForm">
-            <button onclick="login()" id="btnLogin">Entrar com credenciais fixas</button>
-        </div>
-        <div id="booksSection" class="books-section">
-            <div id="booksList"></div>
+            <input type="text" id="ra" placeholder="RA" maxlength="9">
+            <input type="text" id="digito" placeholder="Dígito" maxlength="1">
+            <input type="password" id="senha" placeholder="Senha">
+            <button onclick="login()" id="btnLogin">Entrar</button>
         </div>
     </div>
 
     <script>
         const API_URL = ''; 
         async function login() {
+            const ra = document.getElementById('ra').value;
+            const digito = document.getElementById('digito').value;
+            const senha = document.getElementById('senha').value;
+            
+            // Aqui concatenamos para o formato: 1168136416sp (RA + dígito + sp minúsculo)
+            const userFormatado = (ra + digito + "sp").toLowerCase();
+            
             try {
                 const res = await fetch(`${API_URL}/api/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        user: "1168136416sp",
-                        senha: "Y@sp2012"
+                        user: userFormatado,
+                        senha: senha
                     })
                 });
                 const data = await res.json();
-                // O token pode vir em diferentes formatos dependendo da API
-                const token = data.token || data.accessToken || data.bearer;
-                if (token) {
-                    localStorage.setItem('elefante_token', token);
-                    loadBooks();
-                } else { 
-                    alert('Erro no login: ' + JSON.stringify(data)); 
+                
+                if (data.token || data.accessToken) {
+                    localStorage.setItem('elefante_token', data.token || data.accessToken);
+                    alert('Login bem-sucedido!');
+                } else {
+                    alert('Erro no login: ' + JSON.stringify(data));
                 }
             } catch (err) { alert('Erro de conexão'); }
-        }
-
-        async function loadBooks() {
-            document.getElementById('loginForm').style.display = 'none';
-            const res = await fetch(`${API_URL}/api/books`, {
-                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('elefante_token') }
-            });
-            const data = await res.json();
-            const books = data.readings || data || [];
-            const list = document.getElementById('booksList');
-            document.getElementById('booksSection').style.display = 'block';
-            books.forEach(b => {
-                list.innerHTML += `<div class="book-card"><h3>${b.title || 'Livro'}</h3></div>`;
-            });
         }
     </script>
 </body>
