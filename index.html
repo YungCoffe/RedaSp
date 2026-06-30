@@ -5,17 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Elefante Letrado</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #fff; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
         .card { background: #1e293b; padding: 2rem; border-radius: 16px; width: 100%; max-width: 350px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
         h2 { text-align: center; margin-bottom: 1.5rem; color: #38bdf8; }
         .input-group { position: relative; margin-bottom: 1rem; }
         input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; box-sizing: border-box; }
         .toggle-password { position: absolute; right: 10px; top: 12px; cursor: pointer; color: #94a3b8; font-size: 12px; }
         button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #38bdf8; color: #0f172a; font-weight: bold; cursor: pointer; margin-top: 1rem; }
+        #booksSection { margin-top: 20px; width: 100%; max-width: 350px; display: none; }
+        .book-card { background: #334155; padding: 12px; margin-bottom: 8px; border-radius: 8px; font-size: 0.9rem; }
     </style>
 </head>
 <body>
-    <div class="card">
+    <div class="card" id="loginCard">
         <h2>🐘 Login</h2>
         <div class="input-group">
             <input type="text" id="user" placeholder="Ex: 1234567890sp">
@@ -25,6 +27,11 @@
             <span class="toggle-password" onclick="toggleSenha()">👁️</span>
         </div>
         <button onclick="login()">Entrar</button>
+    </div>
+
+    <div id="booksSection">
+        <h3 style="color: #38bdf8;">Seus Livros</h3>
+        <div id="booksList"></div>
     </div>
 
     <script>
@@ -44,12 +51,32 @@
             });
             
             const data = await res.json();
-            if (data.token || data.accessToken) {
-                localStorage.setItem('elefante_token', data.token || data.accessToken);
-                alert('Logado com sucesso!');
+            const token = data.token || data.accessToken;
+
+            if (token) {
+                localStorage.setItem('elefante_token', token);
+                document.getElementById('loginCard').style.display = 'none';
+                loadBooks();
             } else {
                 alert('Erro: ' + (data.error || 'Dados inválidos'));
             }
+        }
+
+        async function loadBooks() {
+            const token = localStorage.getItem('elefante_token');
+            const res = await fetch('/api/books', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            
+            const data = await res.json();
+            const books = data.readings || data || [];
+            const list = document.getElementById('booksList');
+            document.getElementById('booksSection').style.display = 'block';
+            
+            list.innerHTML = books.length ? '' : 'Nenhum livro encontrado.';
+            books.forEach(b => {
+                list.innerHTML += `<div class="book-card">${b.title || 'Livro sem título'}</div>`;
+            });
         }
     </script>
 </body>
