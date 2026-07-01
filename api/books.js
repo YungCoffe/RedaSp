@@ -1,27 +1,30 @@
 export default async function handler(req, res) {
-    const { type } = req.query;
+    // 1. Pegar o token
     const token = req.headers.authorization;
 
     if (!token) {
-        return res.status(401).json({ error: 'Token não fornecido' });
+        return res.status(401).json({ error: 'Token ausente' });
     }
 
-    const url = 'https://prod-apistudent.elefanteletrado.com.br/v1/library/book/readings';
-
     try {
-        const response = await fetch(url, {
+        // 2. Fazer a requisição para a API oficial
+        const response = await fetch('https://prod-apistudent.elefanteletrado.com.br/v1/library/book/readings', {
             method: 'GET',
             headers: {
                 'Authorization': token,
-                'Origin': 'https://em.elefanteletrado.com.br',
-                'Referer': 'https://em.elefanteletrado.com.br/library/panel',
-                'Accept': 'application/json, text/plain, */*'
+                'Content-Type': 'application/json'
             }
         });
 
+        // 3. Obter os dados
         const data = await response.json();
-        return res.status(response.status).json(data);
+        
+        // 4. Retornar os dados
+        return res.status(200).json(data);
+        
     } catch (error) {
-        return res.status(500).json({ error: error.message });
+        // Log para debug
+        console.error("Erro capturado:", error);
+        return res.status(500).json({ error: 'Falha na comunicação com a API externa' });
     }
 }
