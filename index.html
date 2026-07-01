@@ -29,20 +29,22 @@
         async function fazerLogin() {
             const user = document.getElementById('user').value;
             const senha = document.getElementById('senha').value;
+            
             const res = await fetch('/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user, senha })
             });
-            const data = await res.json();
             
-            const token = data.accessToken || data.token || data.data?.token;
+            const responseData = await res.json();
+            // Captura do token conforme visto em Screenshot_20260701-094257.jpg
+            const token = responseData.data;
 
             if (token) {
                 localStorage.setItem('elefante_token', token);
                 document.getElementById('loginCard').style.display = 'none';
                 document.getElementById('actionPanel').style.display = 'block';
-                alert('Logado com sucesso!');
+                alert('Autenticado com sucesso!');
             } else {
                 alert('Erro: Token não encontrado.');
             }
