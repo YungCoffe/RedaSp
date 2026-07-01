@@ -2,26 +2,25 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Elefante Letrado - App</title>
+    <title>Elefante Leitor</title>
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: #fff; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        body { font-family: sans-serif; background: #0f172a; color: #fff; padding: 20px; display: flex; flex-direction: column; align-items: center; }
         .card { background: #1e293b; padding: 20px; border-radius: 12px; width: 100%; max-width: 350px; }
         input { width: 100%; padding: 10px; margin: 10px 0; border-radius: 6px; border: none; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background: #38bdf8; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 10px; }
-        #output { margin-top: 20px; width: 100%; max-width: 600px; background: #1e293b; padding: 15px; border-radius: 8px; font-size: 0.8rem; overflow-x: auto; display: none; }
+        button { width: 100%; padding: 10px; background: #38bdf8; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        #output { margin-top: 20px; width: 100%; max-width: 600px; background: #1e293b; padding: 15px; border-radius: 8px; font-size: 0.8rem; white-space: pre-wrap; display: none; }
     </style>
 </head>
 <body>
     <div class="card" id="loginCard">
-        <h2>🐘 Login</h2>
-        <input type="text" id="user" placeholder="1234567890sp">
+        <h2>Login</h2>
+        <input type="text" id="user" placeholder="Usuário">
         <input type="password" id="senha" placeholder="Senha">
         <button onclick="fazerLogin()">Entrar</button>
     </div>
 
     <div id="actionPanel" style="display: none; text-align: center;">
-        <h3>Menu</h3>
-        <button onclick="buscarDados('readings')">Listar Livros</button>
+        <button onclick="buscarLivros()">Listar Livros</button>
     </div>
 
     <pre id="output"></pre>
@@ -36,31 +35,40 @@
                 body: JSON.stringify({ user, senha })
             });
             const data = await res.json();
-            const token = data.token || data.accessToken;
+            
+            // Procura o token em qualquer lugar da resposta (data, accessToken, token)
+            const token = data.accessToken || data.token || data.data?.token;
 
             if (token) {
                 localStorage.setItem('elefante_token', token);
                 document.getElementById('loginCard').style.display = 'none';
                 document.getElementById('actionPanel').style.display = 'block';
-                alert('Logado!');
-            } else { alert('Erro no login'); }
+                alert('Logado com sucesso!');
+            } else {
+                alert('Erro: Token não encontrado. Verifique o console.');
+                console.log("Resposta da API:", data);
+            }
         }
 
-        async function buscarDados(tipo) {
+        async function buscarLivros() {
             const token = localStorage.getItem('elefante_token');
             const output = document.getElementById('output');
             output.style.display = 'block';
             output.innerText = "Carregando...";
 
             try {
-                const res = await fetch(`/api/books?type=${tipo}`, {
+                const res = await fetch('/api/books?type=readings', {
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
-                const text = await res.text(); // Pega o texto bruto primeiro
-                const data = JSON.parse(text); // Tenta converter para JSON
-                output.innerText = JSON.stringify(data, null, 2);
+                
+                if (res.status === 401) {
+                    output.innerText = "Erro 401: Token inválido ou expirado. Tente logar novamente.";
+                } else {
+                    const data = await res.json();
+                    output.innerText = JSON.stringify(data, null, 2);
+                }
             } catch (err) {
-                output.innerText = "Erro ao processar resposta da API.";
+                output.innerText = "Erro ao buscar dados.";
             }
         }
     </script>
