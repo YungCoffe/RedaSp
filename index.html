@@ -4,50 +4,53 @@
     <meta charset="UTF-8">
     <title>Yung Redação - Envio</title>
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: #fff; padding: 20px; }
-        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
-        textarea { width: 100%; height: 200px; margin: 10px 0; border-radius: 6px; }
-        select, button { width: 100%; padding: 10px; margin-top: 10px; }
+        body { font-family: sans-serif; background: #0f172a; color: #fff; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; width: 100%; max-width: 500px; margin-bottom: 20px; }
+        textarea { width: 100%; height: 200px; padding: 10px; margin: 10px 0; border-radius: 6px; }
+        select, button { width: 100%; padding: 12px; margin-top: 10px; border-radius: 6px; }
     </style>
 </head>
 <body>
-    <div id="login" class="card">
-        <input type="text" id="user" placeholder="Usuário">
-        <input type="password" id="senha" placeholder="Senha">
-        <button onclick="fazerLogin()">Entrar</button>
-    </div>
-
-    <div id="painel" class="card" style="display:none;">
-        <select id="listaRedacoes"></select>
+    <div class="card">
+        <h2>✍️ Yung Redação</h2>
+        <select id="listaRedacoes"><option>Carregando redações...</option></select>
         <textarea id="texto" placeholder="Cole sua redação aqui..."></textarea>
-        <button onclick="enviarRascunho()">Enviar para Rascunhos</button>
+        <button onclick="enviarRascunho()">Enviar Rascunho</button>
     </div>
 
     <script>
-        let tokenGlobal = "";
-
-        async function fazerLogin() {
-            // ... (mesma lógica de login que você já tem)
-            // Após logar, chame listarRedacoes()
-        }
-
-        async function listarRedacoes() {
-            const res = await fetch('/api/redacoes', { headers: { 'Authorization': tokenGlobal } });
+        // Carrega as redações ao abrir
+        async function carregarRedacoes() {
+            const res = await fetch('/api/redacoes');
             const data = await res.json();
-            // Preencher o select id="listaRedacoes" com os dados da API
+            const select = document.getElementById('listaRedacoes');
+            select.innerHTML = "";
+            
+            data.forEach(item => {
+                // Criamos um objeto com os dados necessários para o envio
+                const meta = JSON.stringify({
+                    taskId: item.task_id,
+                    answerId: item.id,
+                    executedOn: item.executed_on
+                });
+                select.innerHTML += `<option value='${meta}'>${item.task.title}</option>`;
+            });
         }
 
         async function enviarRascunho() {
-            const idRedacao = document.getElementById('listaRedacoes').value;
+            const dados = JSON.parse(document.getElementById('listaRedacoes').value);
             const texto = document.getElementById('texto').value;
 
-            const res = await fetch('/api/salvar-rascunho', {
-                method: 'POST',
-                headers: { 'Authorization': tokenGlobal, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ idRedacao, texto })
+            const res = await fetch('/api/salvar', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...dados, texto })
             });
-            alert(res.ok ? "Rascunho salvo com sucesso!" : "Erro ao enviar.");
+
+            alert(res.ok ? "Salvo com sucesso!" : "Erro ao enviar.");
         }
+
+        carregarRedacoes();
     </script>
 </body>
 </html>
