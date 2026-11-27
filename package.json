@@ -1,5 +1,5 @@
 {
-  "name": "bot-redacao",
+  "name": "bot-rdacao",
   "version": "1.0.0",
   "private": true,
   "engines": { "node": ">=20.6" },
