@@ -21,11 +21,6 @@ function obter(userId) {
   return item.cliente;
 }
 
-async function remover(userId) {
-  const item = mapa.delete(userId) ? mapa.get(userId) : null;
-  return item;
-}
-
 async function descartar(userId) {
   const item = mapa.get(userId);
   if (!item) return;
