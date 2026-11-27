@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const {
   Client, GatewayIntentBits, Events, MessageFlags, ActionRowBuilder, ButtonBuilder,
   ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle,
-  escapeMarkdown, escapeMentions, AttachmentBuilder, PermissionFlagsBits,
+  escapeMarkdown, escapeMentions, AttachmentBuilder, PermissionFlagsBits, ActivityType,
 } = require('discord.js');
 
 const gemini = require('./gemini');
@@ -22,11 +22,29 @@ const COOLDOWN_LOGIN = 15_000;
 const COOLDOWN_GERAR = 60_000;
 const TTL_PENDENTE = 30 * 60 * 1000;
 const MAX_GERACAO = 3;
+const TTL_AVISO = 2 * 60 * 1000;
+const LIMITE_CONEXAO = 90_000;
 
 const ultimoLogin = new Map();
 const ultimaGeracao = new Map();
 const pendentes = new Map();
 let gerandoAgora = 0;
+
+function hora() {
+  return new Date().toISOString().slice(11, 19);
+}
+
+function log(texto) {
+  console.log(`[${hora()}] ${texto}`);
+}
+
+function aviso(texto) {
+  console.warn(`[${hora()}] ${texto}`);
+}
+
+function erro(texto, detalhe) {
+  console.error(`[${hora()}] ${texto}`, detalhe ?? '');
+}
 
 function lerEnv(nome) {
   return (process.env[nome] || '').trim().replace(/^["']|["']$/g, '').trim();
@@ -117,6 +135,30 @@ const comandos = [
   },
 ];
 
+/* ---------- canal de avisos ---------- */
+
+async function canalDeAviso() {
+  const canalId = lerEnv('PANEL_CHANNEL_ID');
+  if (!canalId) return null;
+  try {
+    const canal = await client.channels.fetch(canalId);
+    return canal?.isTextBased() ? canal : null;
+  } catch {
+    return null;
+  }
+}
+
+async function avisarNoCanal(texto) {
+  const canal = await canalDeAviso();
+  if (!canal) return;
+  try {
+    const mensagem = await canal.send(texto);
+    setTimeout(() => { mensagem.delete().catch(() => {}); }, TTL_AVISO).unref();
+  } catch (falha) {
+    erro('Não foi possível postar o aviso no canal:', falha?.code || falha?.message);
+  }
+}
+
 /* ---------- painel ---------- */
 
 async function publicarPainel(interaction) {
@@ -124,17 +166,18 @@ async function publicarPainel(interaction) {
 }
 
 async function garantirPainel() {
-  const canalId = lerEnv('PANEL_CHANNEL_ID');
-  if (!canalId) return;
-  const canal = await client.channels.fetch(canalId);
-  if (!canal?.isTextBased()) throw new Error('Canal do painel não é de texto.');
+  const canal = await canalDeAviso();
+  if (!canal) {
+    aviso('PANEL_CHANNEL_ID ausente ou inválido: painel não publicado automaticamente.');
+    return;
+  }
   const mensagens = await canal.messages.fetch({ limit: 50 });
   const existente = mensagens.find((m) =>
     m.author.id === client.user.id &&
     m.components?.[0]?.components?.[0]?.customId === 'painel:login');
   if (existente) await existente.edit(painel());
   else await canal.send(painel());
-  console.log('Painel garantido no canal configurado.');
+  log('Painel garantido no canal configurado.');
 }
 
 /* ---------- login ---------- */
@@ -184,9 +227,9 @@ async function modalLoginEnvio(interaction) {
   const cliente = sessoes.criar(interaction.user.id);
   try {
     await comPrazo(cliente.login(usuario, senha));
-  } catch (erro) {
+  } catch (falha) {
     await sessoes.descartar(interaction.user.id);
-    if (erro instanceof AuthenticationError) {
+    if (falha instanceof AuthenticationError) {
       return interaction.editReply('Login recusado pela plataforma. Confira RA, dígito, UF e senha.');
     }
     return interaction.editReply('Não foi possível concluir o login agora. Tente em instantes.');
@@ -329,8 +372,8 @@ async function gerar(interaction, id, instrucoes = '') {
   let resultado;
   try {
     resultado = await gemini.generate(tema, detalhe.minChars, detalhe.maxChars, instrucoes);
-  } catch (erro) {
-    const texto = erro instanceof gemini.GeminiError ? erro.message : 'Falha na geração.';
+  } catch (falha) {
+    const texto = falha instanceof gemini.GeminiError ? falha.message : 'Falha na geração.';
     return interaction.editReply({ content: `Não deu: ${texto}`, components: [] });
   } finally {
     gerandoAgora -= 1;
@@ -382,14 +425,14 @@ async function salvar(interaction, id, titulo, texto) {
     const resultado = await comPrazo(cliente.saveDraft(id, titulo, texto));
     mensagem = `Rascunho salvo via ${resultado.metodo} (identificador ${resultado.rascunhoId || 'não confirmado'}). Não é entrega final.`;
     if (resultado.avisos.length) mensagem += ' ' + resultado.avisos.join(' ');
-  } catch (erro) {
-    if (erro instanceof WriteOutcomeUnknown) {
+  } catch (falha) {
+    if (falha instanceof WriteOutcomeUnknown) {
       mensagem = 'Não foi possível confirmar. O resultado é incerto: confira o rascunho na plataforma antes de tentar de novo.';
-    } else if (erro instanceof DraftUnavailable || erro instanceof RangeError) {
-      mensagem = erro.message;
-    } else if (erro instanceof AccessError) {
+    } else if (falha instanceof DraftUnavailable || falha instanceof RangeError) {
+      mensagem = falha.message;
+    } else if (falha instanceof AccessError) {
       mensagem = 'Acesso negado ao salvar; confira a redação na plataforma.';
-    } else if (erro instanceof ProtocolError || erro instanceof UpstreamError || erro instanceof SalaError) {
+    } else if (falha instanceof ProtocolError || falha instanceof UpstreamError || falha instanceof SalaError) {
       mensagem = 'Falha ao salvar; nada confirmado. Confira na plataforma.';
     } else {
       mensagem = 'Falha inesperada ao salvar.';
@@ -404,29 +447,62 @@ async function salvarPendente(interaction, nonce) {
   return salvar(interaction, item.taskId, item.titulo, item.texto);
 }
 
-/* ---------- roteamento ---------- */
+/* ---------- eventos de conexão ---------- */
+
+client.on(Events.ShardDisconnect, (evento) => {
+  aviso(`Desconectado do gateway (código ${evento?.code ?? '?'}).`);
+});
+
+client.on(Events.ShardReconnect, () => {
+  aviso('Tentando reconectar ao gateway...');
+});
+
+client.on(Events.ShardResume, () => {
+  log('Sessão retomada com o gateway.');
+});
+
+client.on(Events.ShardError, (falha) => {
+  erro('Erro no shard:', falha?.message || falha);
+});
+
+client.on(Events.Warn, (texto) => aviso(`Gateway: ${texto}`));
+
+client.on(Events.Error, (falha) => {
+  erro('Erro do cliente:', falha?.message || falha);
+});
 
 client.once(Events.ClientReady, async (c) => {
-  console.log(`Conectado como ${c.user.tag} em ${c.guilds.cache.size} servidor(es)`);
+  clearTimeout(vigia);
+  log(`CONECTADO como ${c.user.tag} (${c.user.id}) em ${c.guilds.cache.size} servidor(es)`);
+
+  try {
+    c.user.setPresence({
+      status: 'online',
+      activities: [{ name: 'redações', type: ActivityType.Watching }],
+    });
+    log('Presença definida como online.');
+  } catch (falha) {
+    erro('Falha ao definir presença:', falha?.message);
+  }
+
   try {
     const guildId = lerEnv('GUILD_ID');
     const guild = guildId ? c.guilds.cache.get(guildId) : null;
-    if (guildId && !guild) console.warn(`GUILD_ID ${guildId} não encontrado; registrando global.`);
+    if (guildId && !guild) aviso(`GUILD_ID ${guildId} não encontrado; registrando global.`);
     const alvo = guild || c.application;
     await alvo.commands.set(comandos);
-    console.log(`Comandos registrados (${guild ? 'guild' : 'global'}).`);
-  } catch (erro) {
-    console.error('Falha ao registrar comandos:', erro?.code || erro?.message || 'erro');
+    log(`Comandos registrados (${guild ? 'guild' : 'global'}).`);
+  } catch (falha) {
+    erro('Falha ao registrar comandos:', falha?.code || falha?.message);
   }
+
   try {
     await garantirPainel();
-  } catch (erro) {
-    console.error('Falha ao garantir o painel:', erro?.message || 'erro');
+  } catch (falha) {
+    erro('Falha ao garantir o painel:', falha?.message);
   }
-});
 
-client.on(Events.Error, (erro) => {
-  console.error('Erro do gateway:', erro?.message || 'erro');
+  await avisarNoCanal(`**Bot conectado** às ${hora()} UTC. Painel pronto.`);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -472,12 +548,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     return undefined;
-  } catch (erro) {
-    console.error('Falha na interação:', erro?.constructor?.name || 'erro');
-    const aviso = 'Falha inesperada ao processar.';
+  } catch (falha) {
+    erro('Falha na interação:', falha?.constructor?.name || 'erro');
+    const texto = 'Falha inesperada ao processar.';
     try {
-      if (interaction.deferred || interaction.replied) await interaction.editReply({ content: aviso, components: [] });
-      else await interaction.reply({ content: aviso, flags: MessageFlags.Ephemeral });
+      if (interaction.deferred || interaction.replied) await interaction.editReply({ content: texto, components: [] });
+      else await interaction.reply({ content: texto, flags: MessageFlags.Ephemeral });
     } catch { /* ignora */ }
   }
 });
@@ -501,12 +577,12 @@ const servidor = http.createServer((req, res) => {
   res.end('ok');
 });
 
-servidor.on('error', (erro) => {
-  console.error(`Falha ao abrir a porta ${porta}:`, erro?.code || erro?.message);
+servidor.on('error', (falha) => {
+  erro(`Falha ao abrir a porta ${porta}:`, falha?.code || falha?.message);
 });
 
 servidor.listen(porta, '0.0.0.0', () => {
-  console.log(`Porta ${porta} aberta em 0.0.0.0`);
+  log(`Porta ${porta} aberta em 0.0.0.0`);
 });
 
 /* ---------- encerramento ---------- */
@@ -515,8 +591,9 @@ let encerrando = false;
 async function encerrar(motivo) {
   if (encerrando) return;
   encerrando = true;
-  console.log(`Encerrando (${motivo})`);
+  log(`Encerrando (${motivo})`);
   clearInterval(varredura);
+  clearTimeout(vigia);
   servidor.close();
   await sessoes.fecharTudo().catch(() => {});
   await client.destroy().catch(() => {});
@@ -525,11 +602,11 @@ async function encerrar(motivo) {
 
 process.on('SIGTERM', () => encerrar('SIGTERM'));
 process.on('SIGINT', () => encerrar('SIGINT'));
-process.on('unhandledRejection', (erro) => {
-  console.error('Promise não tratada:', erro?.code || erro?.message || erro);
+process.on('unhandledRejection', (falha) => {
+  erro('Promise não tratada:', falha?.code || falha?.message || falha);
 });
-process.on('uncaughtException', (erro) => {
-  console.error('Exceção não capturada:', erro?.code || erro?.stack || erro);
+process.on('uncaughtException', (falha) => {
+  erro('Exceção não capturada:', falha?.code || falha?.stack || falha);
 });
 
 /* ---------- diagnóstico e login ---------- */
@@ -537,7 +614,7 @@ process.on('uncaughtException', (erro) => {
 const token = lerEnv('DISCORD_TOKEN');
 const formatoToken = /^[\w-]{20,}\.[\w-]{5,}\.[\w-]{20,}$/;
 
-console.log([
+log([
   `Node ${process.version}`,
   `PORT=${porta}`,
   `DISCORD_TOKEN=${token ? (formatoToken.test(token) ? 'presente' : 'presente (formato suspeito)') : 'AUSENTE'}`,
@@ -547,26 +624,34 @@ console.log([
 ].join(' | '));
 
 if (!token) {
-  console.error('DISCORD_TOKEN ausente. Defina a variável e reinicie.');
+  erro('DISCORD_TOKEN ausente. Defina a variável e reinicie.');
   process.exit(1);
 }
 if (!formatoToken.test(token)) {
-  console.warn('O token não parece um bot token do Discord. Copie de novo em Developer Portal > Bot > Reset Token.');
+  aviso('O token não parece um bot token do Discord. Copie de novo em Developer Portal > Bot > Reset Token.');
 }
 if (!lerEnv('GEMINI_API_KEY')) {
-  console.warn('GEMINI_API_KEY ausente: o bot sobe, mas a geração vai falhar.');
+  aviso('GEMINI_API_KEY ausente: o bot sobe, mas a geração vai falhar.');
 }
 
+const vigia = setTimeout(() => {
+  if (client.isReady()) return;
+  erro(`NÃO CONECTOU em ${LIMITE_CONEXAO / 1000}s. Cheque: token válido (Reset Token), bot convidado com o escopo bot, e saída de rede liberada.`);
+}, LIMITE_CONEXAO);
+vigia.unref();
+
+log('Iniciando login no gateway...');
+
 client.login(token).then(
-  () => console.log('Login aceito pelo Discord.'),
-  (erro) => {
-    const codigo = erro?.code || '';
+  () => log('Login aceito pelo Discord; aguardando o gateway ficar pronto.'),
+  (falha) => {
+    const codigo = falha?.code || '';
     if (codigo === 'TokenInvalid') {
-      console.error('Token recusado. Gere um novo em Developer Portal > Bot > Reset Token.');
+      erro('Token recusado. Gere um novo em Developer Portal > Bot > Reset Token.');
     } else if (codigo === 'DisallowedIntents') {
-      console.error('Intents bloqueadas: ative Server Members no Developer Portal.');
+      erro('Intents bloqueadas: ative Server Members no Developer Portal.');
     } else {
-      console.error('Falha no login:', codigo || erro?.message || erro);
+      erro('Falha no login:', codigo || falha?.message || falha);
     }
     encerrar('falha no login');
   },
