@@ -21,12 +21,16 @@ const MAX_LISTA = 25;
 const COOLDOWN_LOGIN = 15_000;
 const COOLDOWN_GERAR = 60_000;
 const TTL_PENDENTE = 30 * 60 * 1000;
+const MAX_GERACAO = 3;
 
 const ultimoLogin = new Map();
 const ultimaGeracao = new Map();
 const pendentes = new Map();
 let gerandoAgora = 0;
-const MAX_GERACAO = 3;
+
+function lerEnv(nome) {
+  return (process.env[nome] || '').trim().replace(/^["']|["']$/g, '').trim();
+}
 
 function clean(value, limite = 300) {
   if (typeof value !== 'string' && typeof value !== 'number') return '';
@@ -120,20 +124,17 @@ async function publicarPainel(interaction) {
 }
 
 async function garantirPainel() {
-  const canalId = (process.env.PANEL_CHANNEL_ID || '').trim();
+  const canalId = lerEnv('PANEL_CHANNEL_ID');
   if (!canalId) return;
-  try {
-    const canal = await client.channels.fetch(canalId);
-    if (!canal?.isTextBased()) return;
-    const mensagens = await canal.messages.fetch({ limit: 50 });
-    const existente = mensagens.find((m) =>
-      m.author.id === client.user.id &&
-      m.components?.[0]?.components?.[0]?.customId === 'painel:login');
-    if (existente) await existente.edit(painel());
-    else await canal.send(painel());
-  } catch {
-    console.error('Não foi possível garantir o painel no canal configurado.');
-  }
+  const canal = await client.channels.fetch(canalId);
+  if (!canal?.isTextBased()) throw new Error('Canal do painel não é de texto.');
+  const mensagens = await canal.messages.fetch({ limit: 50 });
+  const existente = mensagens.find((m) =>
+    m.author.id === client.user.id &&
+    m.components?.[0]?.components?.[0]?.customId === 'painel:login');
+  if (existente) await existente.edit(painel());
+  else await canal.send(painel());
+  console.log('Painel garantido no canal configurado.');
 }
 
 /* ---------- login ---------- */
@@ -406,11 +407,26 @@ async function salvarPendente(interaction, nonce) {
 /* ---------- roteamento ---------- */
 
 client.once(Events.ClientReady, async (c) => {
-  const guildId = (process.env.GUILD_ID || '').trim();
-  const alvo = guildId ? c.guilds.cache.get(guildId) : c.application;
-  await alvo.commands.set(comandos);
-  await garantirPainel();
-  console.log(`Online como ${c.user.tag} (${sessoes.tamanho()} sessões)`);
+  console.log(`Conectado como ${c.user.tag} em ${c.guilds.cache.size} servidor(es)`);
+  try {
+    const guildId = lerEnv('GUILD_ID');
+    const guild = guildId ? c.guilds.cache.get(guildId) : null;
+    if (guildId && !guild) console.warn(`GUILD_ID ${guildId} não encontrado; registrando global.`);
+    const alvo = guild || c.application;
+    await alvo.commands.set(comandos);
+    console.log(`Comandos registrados (${guild ? 'guild' : 'global'}).`);
+  } catch (erro) {
+    console.error('Falha ao registrar comandos:', erro?.code || erro?.message || 'erro');
+  }
+  try {
+    await garantirPainel();
+  } catch (erro) {
+    console.error('Falha ao garantir o painel:', erro?.message || 'erro');
+  }
+});
+
+client.on(Events.Error, (erro) => {
+  console.error('Erro do gateway:', erro?.message || 'erro');
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -476,26 +492,82 @@ const varredura = setInterval(() => {
 }, 60_000);
 varredura.unref();
 
-const porta = Number(process.env.PORT || 0);
-if (porta) {
-  http.createServer((req, res) => {
-    res.writeHead(200, { 'content-type': 'text/plain' });
-    res.end('ok');
-  }).listen(porta, '0.0.0.0');
-}
+/* ---------- porta ---------- */
 
-async function encerrar() {
+const porta = Number.parseInt(lerEnv('PORT'), 10) || 3000;
+
+const servidor = http.createServer((req, res) => {
+  res.writeHead(200, { 'content-type': 'text/plain' });
+  res.end('ok');
+});
+
+servidor.on('error', (erro) => {
+  console.error(`Falha ao abrir a porta ${porta}:`, erro?.code || erro?.message);
+});
+
+servidor.listen(porta, '0.0.0.0', () => {
+  console.log(`Porta ${porta} aberta em 0.0.0.0`);
+});
+
+/* ---------- encerramento ---------- */
+
+let encerrando = false;
+async function encerrar(motivo) {
+  if (encerrando) return;
+  encerrando = true;
+  console.log(`Encerrando (${motivo})`);
   clearInterval(varredura);
-  await sessoes.fecharTudo();
-  await client.destroy();
+  servidor.close();
+  await sessoes.fecharTudo().catch(() => {});
+  await client.destroy().catch(() => {});
   process.exit(0);
 }
-process.on('SIGTERM', encerrar);
-process.on('SIGINT', encerrar);
 
-const token = (process.env.DISCORD_TOKEN || '').trim();
+process.on('SIGTERM', () => encerrar('SIGTERM'));
+process.on('SIGINT', () => encerrar('SIGINT'));
+process.on('unhandledRejection', (erro) => {
+  console.error('Promise não tratada:', erro?.code || erro?.message || erro);
+});
+process.on('uncaughtException', (erro) => {
+  console.error('Exceção não capturada:', erro?.code || erro?.stack || erro);
+});
+
+/* ---------- diagnóstico e login ---------- */
+
+const token = lerEnv('DISCORD_TOKEN');
+const formatoToken = /^[\w-]{20,}\.[\w-]{5,}\.[\w-]{20,}$/;
+
+console.log([
+  `Node ${process.version}`,
+  `PORT=${porta}`,
+  `DISCORD_TOKEN=${token ? (formatoToken.test(token) ? 'presente' : 'presente (formato suspeito)') : 'AUSENTE'}`,
+  `GEMINI_API_KEY=${lerEnv('GEMINI_API_KEY') ? 'presente' : 'AUSENTE'}`,
+  `PANEL_CHANNEL_ID=${lerEnv('PANEL_CHANNEL_ID') || 'ausente'}`,
+  `GUILD_ID=${lerEnv('GUILD_ID') || 'ausente'}`,
+].join(' | '));
+
 if (!token) {
-  console.error('DISCORD_TOKEN ausente.');
+  console.error('DISCORD_TOKEN ausente. Defina a variável e reinicie.');
   process.exit(1);
 }
-client.login(token);
+if (!formatoToken.test(token)) {
+  console.warn('O token não parece um bot token do Discord. Copie de novo em Developer Portal > Bot > Reset Token.');
+}
+if (!lerEnv('GEMINI_API_KEY')) {
+  console.warn('GEMINI_API_KEY ausente: o bot sobe, mas a geração vai falhar.');
+}
+
+client.login(token).then(
+  () => console.log('Login aceito pelo Discord.'),
+  (erro) => {
+    const codigo = erro?.code || '';
+    if (codigo === 'TokenInvalid') {
+      console.error('Token recusado. Gere um novo em Developer Portal > Bot > Reset Token.');
+    } else if (codigo === 'DisallowedIntents') {
+      console.error('Intents bloqueadas: ative Server Members no Developer Portal.');
+    } else {
+      console.error('Falha no login:', codigo || erro?.message || erro);
+    }
+    encerrar('falha no login');
+  },
+);
