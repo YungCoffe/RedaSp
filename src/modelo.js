@@ -40,13 +40,10 @@ async function listar() {
   if (!dados || !Array.isArray(dados.models)) throw new ModeloError('Catálogo não reconhecido.');
 
   return dados.models
-    .map((m) => String(m.name || '').replace(/^models\//, ''))
-    .filter((nome) => nome && !IGNORAR.test(nome))
-    .filter((nome) => {
-      const bruto = dados.models.find((m) => String(m.name || '').endsWith(nome));
-      const metodos = bruto?.supportedGenerationMethods;
-      return Array.isArray(metodos) && metodos.includes('generateContent');
-    })
+    .map((m) => ({ nome: String(m.name || '').replace(/^models\//, ''), metodos: m.supportedGenerationMethods }))
+    .filter((m) => m.nome && !IGNORAR.test(m.nome))
+    .filter((m) => Array.isArray(m.metodos) && m.metodos.includes('generateContent'))
+    .map((m) => m.nome)
     .sort((a, b) => pontuar(b) - pontuar(a));
 }
 
